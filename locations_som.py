@@ -1,15 +1,16 @@
 import datetime
+import json
 import os.path
 import time
 
 import matplotlib.pyplot as plt
 import numpy as np
-import som.bag_of_characters as boc
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import MinMaxScaler
 from som.som import SOM, TrainedSOM
 
 from get_locations import load_and_preprocess_locations
+from utils import CharCountVectorizer
 
 
 class Config:
@@ -35,6 +36,9 @@ class Config:
 
     def location_positions_path(self):
         return self.trained_data_dir + "/location_positions.npy"
+
+    def hyperparams_path(self):
+        return self.trained_data_dir + "/hyperparams.npy"
 
 
 CONFIGS = {"1gram": Config(1, "data/locations_1gram"),
@@ -85,45 +89,50 @@ class Observer:
         self.ax.clear()
 
 
-def predict(word):
+def predict(sample_word):
     Thetas = np.load(CURRENT_CONFIG.trained_thetas_path())
     trained_map = TrainedSOM(Thetas)
 
-    preprocess_pipeline = make_pipeline(boc.WordNGramer(CURRENT_CONFIG.n_gram_param), MinMaxScaler(), trained_map)
+    preprocess_pipeline = make_pipeline(CharCountVectorizer(CURRENT_CONFIG.n_gram_param), MinMaxScaler(), trained_map)
     preprocess_pipeline.fit(LOCATIONS)
 
     if CURRENT_CONFIG.positions_prepared():
-        location_positions = np.load(CURRENT_CONFIG.location_positions_path(), allow_pickle=True)
+        locations_bmu_coords = np.load(CURRENT_CONFIG.location_positions_path(), allow_pickle=True)
     else:
-        location_positions = preprocess_pipeline.transform(LOCATIONS)
-        np.save(CURRENT_CONFIG.location_positions_path(), location_positions)
+        locations_bmu_coords = preprocess_pipeline.transform(LOCATIONS)
+        np.save(CURRENT_CONFIG.location_positions_path(), locations_bmu_coords)
 
     map_length = len(Thetas)
-    coords = np.empty((map_length, map_length, 2))
-    for neuron_x in range(map_length):
-        for neuron_y in range(map_length):
-            coords[neuron_x, neuron_y] = np.array([neuron_x, neuron_y])
 
     map = np.empty((map_length, map_length), dtype=object)
-    for location, position in zip(LOCATIONS, location_positions):
-        x, y = position
+    for location, bmu_coords in zip(LOCATIONS, locations_bmu_coords):
+        x, y = bmu_coords
         if map[x, y] is None:
             map[x, y] = []
         map[x, y].append(location)
 
-    transformed_samples = preprocess_pipeline.transform([word])
+    # map is now map_length x map_length grid of lists of locations
 
-    generator = generate_closest(transformed_samples[0], coords, map)
+    sample_coords = preprocess_pipeline.transform([sample_word])[0]
 
-    for i in range(30):
+    generator = generate_closest(sample_coords, map_length, map)
+
+    for i in range(20):
         print(next(generator))
 
 
-def generate_closest(sample, coords, location_map):
-    start = time.process_time()
-    D = np.linalg.norm(sample - coords, axis=2)
+def generate_closest(sample_bmu_coords, map_length, location_map):
+    map_coords = np.empty((map_length, map_length, 2))
+    for neuron_x in range(map_length):
+        for neuron_y in range(map_length):
+            map_coords[neuron_x, neuron_y] = np.array([neuron_x, neuron_y])
+
+    # map_coords are just coordinates in the map like [[[0 0] [0 1] [0 2]]]
+
+    D = np.linalg.norm(sample_bmu_coords - map_coords, axis=2)
+    # D contains distance of each neuron in a map to sample bmu coords
+
     xs, ys = np.unravel_index(np.argsort(D, axis=None), D.shape)
-    print(time.process_time() - start)
     for x, y in zip(xs, ys):
         if location_map[x, y] is not None:
             for loc in location_map[x, y]:
@@ -131,10 +140,17 @@ def generate_closest(sample, coords, location_map):
 
 
 def train(hyperparams, observer):
-    map = SOM(**hyperparams, observer=observer)
-    pipeline = make_pipeline(boc.WordNGramer(CURRENT_CONFIG.n_gram_param), MinMaxScaler(), map)
+    som = SOM(**hyperparams, observer=observer)
+    pipeline = make_pipeline(CharCountVectorizer(CURRENT_CONFIG.n_gram_param), MinMaxScaler(), som)
     pipeline.fit_transform(LOCATIONS, som__X_repr=LOCATIONS)
-    np.save(CURRENT_CONFIG.trained_thetas_path(), map.Thetas)
+
+    save_after_training(hyperparams, som)
+
+
+def save_after_training(hyperparams, som):
+    np.save(CURRENT_CONFIG.trained_thetas_path(), som.Thetas)
+    with open(CURRENT_CONFIG.hyperparams_path(), mode="w", encoding="utf-8") as fp:
+        json.dump(hyperparams, fp)
 
 
 if __name__ == "__main__":
@@ -142,6 +158,7 @@ if __name__ == "__main__":
     CURRENT_CONFIG.ensure_dir()
     if not CURRENT_CONFIG.trained():
         hyperparams = {"map_length": 100, "learning_rate_constant": 40_000, "init_sigma": 25, "sigma_constant": 35_000,
-                       "max_iter": 10_000}
+                       "max_iter": 100_000}
         train(hyperparams, Observer(draw=False))
     predict("hechngeli")
+    predict("belir")
