@@ -1,17 +1,12 @@
-import itertools
-
 from sklearn.decomposition import PCA
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from get_locations import load_and_preprocess_locations
-from utils import CharCountVectorizer, closest_locations_by_vector_distance
+from utils import CharCountVectorizer, suggest_locations
 
 if __name__ == "__main__":
-    pipeline = make_pipeline(CharCountVectorizer(1), StandardScaler(), PCA(20))
+    suggestor = suggest_locations(make_pipeline(CharCountVectorizer(1), StandardScaler(), PCA(20)))
+    next(suggestor)
 
-    locations = load_and_preprocess_locations()
-
-    X = pipeline.fit_transform(locations)
-
-    print(list(itertools.islice(closest_locations_by_vector_distance(X, "hechngeli", pipeline, locations), 20)))
+    print(suggestor.send("hechngeli"))
+    print(suggestor.send("belir"))

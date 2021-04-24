@@ -1,4 +1,5 @@
 import datetime
+import itertools
 import json
 import os.path
 import time
@@ -89,36 +90,23 @@ class Observer:
         self.ax.clear()
 
 
-def predict(sample_word):
-    Thetas = np.load(CURRENT_CONFIG.trained_thetas_path())
-    trained_map = TrainedSOM(Thetas)
+def suggest_locations(config_key):
+    current_config = CONFIGS[config_key]
+    current_config.ensure_dir()
+    if not current_config.trained():
+        hyperparams = {"map_length": 100, "learning_rate_constant": 40_000, "init_sigma": 25, "sigma_constant": 35_000,
+                       "max_iter": 100_000}
+        train(current_config, hyperparams, Observer(draw=False))
 
-    preprocess_pipeline = make_pipeline(CharCountVectorizer(CURRENT_CONFIG.n_gram_param), MinMaxScaler(), trained_map)
-    preprocess_pipeline.fit(LOCATIONS)
-
-    if CURRENT_CONFIG.positions_prepared():
-        locations_bmu_coords = np.load(CURRENT_CONFIG.location_positions_path(), allow_pickle=True)
-    else:
-        locations_bmu_coords = preprocess_pipeline.transform(LOCATIONS)
-        np.save(CURRENT_CONFIG.location_positions_path(), locations_bmu_coords)
-
-    map_length = len(Thetas)
-
-    map = np.empty((map_length, map_length), dtype=object)
-    for location, bmu_coords in zip(LOCATIONS, locations_bmu_coords):
-        x, y = bmu_coords
-        if map[x, y] is None:
-            map[x, y] = []
-        map[x, y].append(location)
-
+    map, map_length, preprocess_pipeline = prepare_trained_pipeline(current_config)
     # map is now map_length x map_length grid of lists of locations
 
-    sample_coords = preprocess_pipeline.transform([sample_word])[0]
-
-    generator = generate_closest(sample_coords, map_length, map)
-
-    for i in range(20):
-        print(next(generator))
+    suggestions = None
+    while True:
+        word = yield suggestions
+        sample_coords = preprocess_pipeline.transform([word])[0]
+        generator = generate_closest(sample_coords, map_length, map)
+        suggestions = list(itertools.islice(generator, 20))
 
 
 def generate_closest(sample_bmu_coords, map_length, location_map):
@@ -139,26 +127,42 @@ def generate_closest(sample_bmu_coords, map_length, location_map):
                 yield loc
 
 
-def train(hyperparams, observer):
+def train(current_config, hyperparams, observer):
     som = SOM(**hyperparams, observer=observer)
-    pipeline = make_pipeline(CharCountVectorizer(CURRENT_CONFIG.n_gram_param), MinMaxScaler(), som)
+    pipeline = make_pipeline(CharCountVectorizer(current_config.n_gram_param), MinMaxScaler(), som)
     pipeline.fit_transform(LOCATIONS, som__X_repr=LOCATIONS)
 
-    save_after_training(hyperparams, som)
+    save_after_training(current_config, hyperparams, som)
 
 
-def save_after_training(hyperparams, som):
-    np.save(CURRENT_CONFIG.trained_thetas_path(), som.Thetas)
-    with open(CURRENT_CONFIG.hyperparams_path(), mode="w", encoding="utf-8") as fp:
+def save_after_training(current_config, hyperparams, som):
+    np.save(current_config.trained_thetas_path(), som.Thetas)
+    with open(current_config.hyperparams_path(), mode="w", encoding="utf-8") as fp:
         json.dump(hyperparams, fp)
 
 
+def prepare_trained_pipeline(current_config):
+    Thetas = np.load(current_config.trained_thetas_path())
+    trained_map = TrainedSOM(Thetas)
+    preprocess_pipeline = make_pipeline(CharCountVectorizer(current_config.n_gram_param), MinMaxScaler(), trained_map)
+    preprocess_pipeline.fit(LOCATIONS)
+    if current_config.positions_prepared():
+        locations_bmu_coords = np.load(current_config.location_positions_path(), allow_pickle=True)
+    else:
+        locations_bmu_coords = preprocess_pipeline.transform(LOCATIONS)
+        np.save(current_config.location_positions_path(), locations_bmu_coords)
+    map_length = len(Thetas)
+    map = np.empty((map_length, map_length), dtype=object)
+    for location, bmu_coords in zip(LOCATIONS, locations_bmu_coords):
+        x, y = bmu_coords
+        if map[x, y] is None:
+            map[x, y] = []
+        map[x, y].append(location)
+    # map is now map_length x map_length grid of lists of locations
+    return map, map_length, preprocess_pipeline
+
+
 if __name__ == "__main__":
-    CURRENT_CONFIG = CONFIGS["1gram"]
-    CURRENT_CONFIG.ensure_dir()
-    if not CURRENT_CONFIG.trained():
-        hyperparams = {"map_length": 100, "learning_rate_constant": 40_000, "init_sigma": 25, "sigma_constant": 35_000,
-                       "max_iter": 100_000}
-        train(hyperparams, Observer(draw=False))
-    predict("hechngeli")
-    predict("belir")
+    suggestor = suggest_locations("1gram")
+    next(suggestor)
+    print(suggestor.send("hechngeli"))
