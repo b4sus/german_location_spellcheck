@@ -64,8 +64,8 @@ class Observer:
             print(f"{datetime.datetime.now()}: iteration {iter}, learning_rate:{learning_rate}, sigma: {sigma}, "
                   f"neighbour_change: {neighbor_change} mean for one training sample: {np.mean(self.elapsed_times)}")
             self.elapsed_times.clear()
-        if iter in (100, 1000, 10000):
-            self.draw_som(Thetas, X, X_repr, iter, learning_rate, map_length, neighbor_change, sigma)
+        # if iter in (100, 1000, 10000):
+        #     self.draw_som(Thetas, X, X_repr, iter, learning_rate, map_length, neighbor_change, sigma)
         self.start = time.process_time()
 
     def draw_som(self, Thetas, X, X_repr, iter, learning_rate, map_length, neighbor_change, sigma):
@@ -107,6 +107,26 @@ def suggest_locations(config_key):
         sample_coords = preprocess_pipeline.transform([word])[0]
         generator = generate_closest(sample_coords, map_length, map)
         suggestions = list(itertools.islice(generator, 20))
+
+
+class Suggester:
+    def __init__(self, config_key, out_size):
+        self.out_size = out_size
+        current_config = CONFIGS[config_key]
+        current_config.ensure_dir()
+        if not current_config.trained():
+            hyperparams = {"map_length": 100, "learning_rate_constant": 40_000, "init_sigma": 25,
+                           "sigma_constant": 35_000,
+                           "max_iter": 100_000}
+            train(current_config, hyperparams, Observer(draw=False))
+
+        self.map, self.map_length, self.preprocess_pipeline = prepare_trained_pipeline(current_config)
+        # map is now map_length x map_length grid of lists of locations
+
+    def __call__(self, word):
+        sample_coords = self.preprocess_pipeline.transform([word])[0]
+        generator = generate_closest(sample_coords, self.map_length, self.map)
+        return list(itertools.islice(generator, self.out_size))
 
 
 def generate_closest(sample_bmu_coords, map_length, location_map):
@@ -166,3 +186,4 @@ if __name__ == "__main__":
     suggestor = suggest_locations("1gram")
     next(suggestor)
     print(suggestor.send("hechngeli"))
+    print(suggestor.send("belir"))

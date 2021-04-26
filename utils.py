@@ -16,6 +16,18 @@ class CharCountVectorizer(CountVectorizer):
         return super().fit_transform(raw_documents, y).toarray()
 
 
+class Suggester:
+    def __init__(self, pipeline, out_size=10):
+        self.pipeline = pipeline
+        self.out_size = out_size
+        self.locations = load_and_preprocess_locations()
+        self.X = pipeline.fit_transform(self.locations)
+
+    def __call__(self, word):
+        return list(itertools.islice(closest_locations_by_vector_distance(self.X, word, self.pipeline, self.locations),
+                                     self.out_size))
+
+
 def suggest_locations(pipeline):
     locations = load_and_preprocess_locations()
     X = pipeline.fit_transform(locations)
