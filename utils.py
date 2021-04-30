@@ -1,13 +1,14 @@
 import itertools
-from get_locations import load_and_preprocess_locations
 
 import numpy as np
 from sklearn.feature_extraction.text import CountVectorizer
 
+from get_locations import load_and_preprocess_locations
+
 
 class CharCountVectorizer(CountVectorizer):
-    def __init__(self, n_gram):
-        super().__init__(analyzer="char", ngram_range=(n_gram, n_gram))
+    def __init__(self, n_gram, n_gram_upper=None):
+        super().__init__(analyzer="char", ngram_range=(n_gram, n_gram if n_gram_upper is None else n_gram_upper))
 
     def transform(self, raw_documents):
         return super().transform(raw_documents).toarray()
