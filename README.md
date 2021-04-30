@@ -61,6 +61,7 @@ method is a bit more off - not complete nonsense, but off.
 For 2grams work also good for the nearest and the pca method, depending on how broken the input is.
 
 Quite interesting are also the result when n_gram is a range (1 - 2)
+
 #TODOs
 * consider range for n-grams - see CountVectorizer doc
 * try other similarity method
