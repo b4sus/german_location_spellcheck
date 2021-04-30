@@ -1,4 +1,4 @@
-#german location spellcheck
+# german location spellcheck
 Highly experimental project where I am trying to use some techniques from machine learning to have a spellcheck (or autocorrect)
 for limited set of words - german locations (cities/towns - Städte/Gemeinden). The idea is that when I misspell the location
 I will get list of locations which are 'close' to what I've typed.
@@ -62,7 +62,7 @@ For 2grams work also good for the nearest and the pca method, depending on how b
 
 Quite interesting are also the result when n_gram is a range (1 - 2)
 
-#TODOs
+# TODOs
 * consider range for n-grams - see CountVectorizer doc
 * try other similarity method
 * compare with http://www.norvig.com/spell-correct.html
